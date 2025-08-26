@@ -2,3 +2,4 @@ streamlit
 pdfplumber
 pandas
 firebase-admin
+openpyxl
