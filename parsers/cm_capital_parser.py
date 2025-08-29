@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 from .base_parser import BaseParser
-from utils import parse_br_float # Importe a nova função
+from utils import parse_br_float
 
 class CMCapitalParser(BaseParser):
     NOME_CORRETORA = "CM Capital"
@@ -44,12 +44,10 @@ class CMCapitalParser(BaseParser):
                     especificacao_completa, qtd_str, preco_str, valor_str, tipo_dc_str = match.groups()
                     especificacao_completa = especificacao_completa.strip()
 
-                    # USANDO NOVA FUNÇÃO
                     qtd = int(parse_br_float(qtd_str))
                     preco = parse_br_float(preco_str)
                     valor = parse_br_float(valor_str)
                     
-                    # --- Lógica de Fragmentação ---
                     tipo_mercado_str, negociacao_str, titulo_str, vencimento_str, obs_str = "VISTA", "", especificacao_completa, "", ""
                     
                     mercado_pattern = r'\s(VISTA|OPCAO DE COMPRA|OPCAO DE VENDA)\s'
@@ -75,8 +73,6 @@ class CMCapitalParser(BaseParser):
                     else:
                          titulo_str = especificacao_completa
                          
-                    # --- Fim da Fragmentação ---
-
                     negociacoes_da_nota.append({
                         "Numero Nota": info_cabecalho.get('numero_nota'),
                         "Data Pregao": info_cabecalho.get('data_pregao'),
@@ -85,7 +81,7 @@ class CMCapitalParser(BaseParser):
                         "Negociacao": negociacao_str,
                         "Tipo Mercado": tipo_mercado_str,
                         "Vencimento": vencimento_str,
-                        "Titulo": titulo_str, # Usar 'Titulo' consistentemente
+                        "Titulo": titulo_str,
                         "Obs": obs_str,
                         "Quantidade": qtd,
                         "Preço": preco,
@@ -93,7 +89,6 @@ class CMCapitalParser(BaseParser):
                         "D/C": tipo_dc_str,
                     })
                 except (ValueError, IndexError) as e:
-                    # print(f"Linha ignorada no parser de operações CM Capital: {linha_limpa} | Erro: {e}")
                     continue
         return negociacoes_da_nota
 
@@ -103,4 +98,65 @@ class CMCapitalParser(BaseParser):
         return pd.DataFrame(operacoes_da_nota)
 
     def extrair_resumo(self) -> pd.DataFrame:
-        return pd.DataFrame()
+        resumos = []
+        match = re.search(r"Resumo dos Neg[óo]cios\n((?:.+\n)+?)Valor das opera[çc][õo]es\s+([0-9.,]+)", self.texto, re.IGNORECASE | re.DOTALL)
+
+        if match:
+            bloco = match.group(1)
+            total_operacoes = match.group(2)
+            
+            for linha in bloco.strip().split("\n"):
+                campos = re.search(r"(.+?)\s+([0-9.,]+)\s*([CD]?)$", linha.strip())
+                if campos:
+                    try:
+                        descricao = re.sub(r'\s{2,}', ' ', campos.group(1).strip())
+                        valor = parse_br_float(campos.group(2))
+                        resumos.append({
+                            "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                            "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                            "Descrição": descricao,
+                            "Valor": valor
+                        })
+                    except (ValueError, IndexError):
+                        continue
+            
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "Valor das operações",
+                "Valor": parse_br_float(total_operacoes)
+            })
+
+        match_taxas = re.search(r"Taxa de liquidação\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_taxas:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "Taxa de liquidação",
+                "Valor": parse_br_float(match_taxas.group(1))
+            })
+
+        match_emolumentos = re.search(r"Emolumentos\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_emolumentos:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "Emolumentos",
+                "Valor": parse_br_float(match_emolumentos.group(1))
+            })
+
+        match_irrf = re.search(r"I\.R\.R\.F\.\s+s/\s+operações\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_irrf:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "IRRF",
+                "Valor": parse_br_float(match_irrf.group(1))
+            })
+
+        df = pd.DataFrame(resumos)
+        if not df.empty:
+            df = df[["Numero Nota", "Data Pregao", "Descrição", "Valor"]]
+            df = df.drop_duplicates()
+            
+        return df
