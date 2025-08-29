@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 from .base_parser import BaseParser
-from utils import parse_br_float # Importe a nova função
+from utils import parse_br_float
 
 class GenericParser(BaseParser):
     NOME_CORRETORA = "Genérico"
@@ -54,7 +54,6 @@ class GenericParser(BaseParser):
             match = re.search(r'^(.*?)\s+([\d\.]+)\s+([\d.,:]+)\s+([\d.,:]+)\s*([CD])$', linha_limpa, re.IGNORECASE)
             
             if not match:
-                # print(f"Linha não pareou no generic_parser: {linha_limpa}")
                 continue
             
             try:
@@ -62,7 +61,6 @@ class GenericParser(BaseParser):
                 
                 especificacao_completa = re.sub(r'B3 RV\s*', '', especificacao_completa, flags=re.IGNORECASE).strip()
 
-                # USANDO NOVA FUNÇÃO
                 qtd = int(parse_br_float(qtd_str))
                 preco = parse_br_float(preco_str)
                 valor = parse_br_float(valor_str)
@@ -86,7 +84,7 @@ class GenericParser(BaseParser):
                     "CNPJ": self.info_cabecalho.get('cnpj'),
                     "Tipo Mercado": tipo_mercado,
                     "Prazo": prazo,
-                    "Titulo": titulo, # Usar 'Titulo' consistentemente
+                    "Titulo": titulo,
                     "Observação": observacao,
                     "Quantidade": qtd,
                     "Preço": preco,
@@ -94,7 +92,6 @@ class GenericParser(BaseParser):
                     "D/C": tipo_operacao,
                 })
             except Exception as e:
-                # print(f"Erro ao parsear linha no GenericParser: '{linha_limpa}' - Erro: {e}")
                 continue
 
         return pd.DataFrame(negociacoes)
@@ -112,7 +109,7 @@ class GenericParser(BaseParser):
                 if campos:
                     try:
                         descricao = re.sub(r'\s{2,}', ' ', campos.group(1).strip())
-                        valor = parse_br_float(campos.group(2)) # USANDO NOVA FUNÇÃO
+                        valor = parse_br_float(campos.group(2))
                         resumos.append({
                             "Numero Nota": self.info_cabecalho.get('numero_nota'),
                             "Data Pregao": self.info_cabecalho.get('data_pregao'),
@@ -126,7 +123,35 @@ class GenericParser(BaseParser):
                 "Numero Nota": self.info_cabecalho.get('numero_nota'),
                 "Data Pregao": self.info_cabecalho.get('data_pregao'),
                 "Descrição": "Valor das operações",
-                "Valor": parse_br_float(total_operacoes) # USANDO NOVA FUNÇÃO
+                "Valor": parse_br_float(total_operacoes)
+            })
+
+        # Captura de Taxas e IRRF
+        match_taxas = re.search(r"Taxa de liquidação\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_taxas:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "Taxa de liquidação",
+                "Valor": parse_br_float(match_taxas.group(1))
+            })
+
+        match_emolumentos = re.search(r"Emolumentos\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_emolumentos:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "Emolumentos",
+                "Valor": parse_br_float(match_emolumentos.group(1))
+            })
+
+        match_irrf = re.search(r"I\.R\.R\.F\.\s+s/\s+operações\s+([0-9.,]+)", self.texto, re.IGNORECASE)
+        if match_irrf:
+            resumos.append({
+                "Numero Nota": self.info_cabecalho.get('numero_nota'),
+                "Data Pregao": self.info_cabecalho.get('data_pregao'),
+                "Descrição": "IRRF",
+                "Valor": parse_br_float(match_irrf.group(1))
             })
 
         df = pd.DataFrame(resumos)
