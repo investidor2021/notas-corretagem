@@ -6,7 +6,15 @@ import traceback
 import re 
 import locale # Importe a biblioteca locale
 import datetime # Garanta que este import está no topo do seu app.py
+from database import carregar_dados_do_banco # Mantenha o import original
 
+@st.cache_data
+def load_cached_data(table_name):
+    """
+    Função intermediária para carregar dados do banco com cache.
+    """
+    print(f"CACHE MISS: Carregando tabela '{table_name}' do banco de dados...") # Para debug
+    return carregar_dados_do_banco(table_name)
 
 
 # --- Configuração de Localidade (para formatação numérica em BR) ---
@@ -404,7 +412,9 @@ with tab2:
     st.header("Dashboard de Acompanhamento")
     # --- Carregar e Exibir Dados do Cabeçalho ---
     st.subheader("Informações de Cabeçalho das Notas")
-    df_cabecalho = carregar_dados_do_banco("notas_cabecalho")
+    df_cabecalho = load_cached_data("notas_cabecalho")
+    
+    st.subheader("Informações de Cabeçalho das Notas")
     if not df_cabecalho.empty:
         st.dataframe(df_cabecalho, use_container_width=True)
 
@@ -437,7 +447,7 @@ with tab2:
     # --- Carregar e Exibir Dados de Operações ---
     st.markdown("---")
     st.subheader("Detalhes das Operações")
-    df_operacoes = carregar_dados_do_banco("operacoes")
+    df_operacoes = load_cached_data("operacoes")    
     if not df_operacoes.empty:
         # Formata uma CÓPIA do DataFrame para exibição
         df_operacoes_formatted = df_operacoes.copy()
