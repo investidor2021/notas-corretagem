@@ -38,17 +38,27 @@ def _processar_opcoes(df_opcoes: pd.DataFrame, data_apuracao: pd.Timestamp):
     for (ativo, vencimento, categoria), group in opcoes_agrupadas:
         vendas = group[group['Operacao'] == 'V']
         compras = group[group['Operacao'] == 'C']
-        total_vendido = vendas['Valor'].sum() - vendas.get('Taxas', 0).sum()  # Deduz taxas das vendas
+
+        # --- CÓDIGO CORRIGIDO ---
+        # Verifica se a coluna 'Taxas' existe antes de somar para evitar o erro.
+        taxas_vendas = vendas['Taxas'].sum() if 'Taxas' in vendas.columns else 0
+        total_vendido = vendas['Valor'].sum() - taxas_vendas
+
+        taxas_compras = compras['Taxas'].sum() if 'Taxas' in compras.columns else 0
+        total_comprado = compras['Valor'].sum() + taxas_compras
+        # --- FIM DA CORREÇÃO ---
+
         qtd_vendida = vendas['Quantidade'].sum()
-        total_comprado = compras['Valor'].sum() + compras.get('Taxas', 0).sum()  # Adiciona taxas às compras
         qtd_comprada = compras['Quantidade'].sum()
         data_ultima_op = group['Data Pregao'].max()
+        
         # Calcula IRRF retido para day trade (1% do lucro) ou swing (0,005% das vendas)
         irrf = 0.0
         if categoria == 'Day Trade' and total_vendido > total_comprado:
             irrf = (total_vendido - total_comprado) * 0.01
         elif categoria != 'Day Trade':
             irrf = total_vendido * 0.00005
+            
         if qtd_comprada == qtd_vendida:
             lucro_bruto = total_vendido - total_comprado
             eventos_opcoes.append({
@@ -67,8 +77,10 @@ def _processar_opcoes(df_opcoes: pd.DataFrame, data_apuracao: pd.Timestamp):
                 'Lucro Bruto': lucro_bruto,
                 'IRRF': irrf
             })
+            
         if qtd_comprada != qtd_vendida and vencimento < data_apuracao:
             print(f"Warning: Posição aberta em {ativo} expirada: Qtd Compra {qtd_comprada}, Venda {qtd_vendida}")
+            
     return eventos_opcoes
 
 
